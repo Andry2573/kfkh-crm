@@ -1,4 +1,3 @@
-html
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -65,20 +64,18 @@ html
             padding: 8px;
             border-radius: 5px;
             margin-top: 10px;
-            display: none;
         }
         .cadastral-info {
             background-color: #e9f7fe;
             padding: 10px;
             border-radius: 5px;
             margin-top: 15px;
-            display: none;
         }
-        .cors-warning {
+        .proxy-warning {
             background-color: #fff3cd;
             padding: 10px;
             border-radius: 5px;
-            margin-bottom: 15px;
+            margin-top: 10px;
             display: none;
         }
     </style>
@@ -86,16 +83,6 @@ html
 <body>
     <div class="container">
         <h1 class="text-center mb-4">CRM для КФХ - Учет сельскохозяйственных полей</h1>
-        
-        <!-- Предупреждение о CORS -->
-        <div id="corsWarning" class="cors-warning">
-            <strong>Важно!</strong> Для поиска по кадастровому номеру необходим локальный веб-сервер.<br>
-            Если вы открываете файл напрямую (file://), установите простой HTTP-сервер:
-            <ul>
-                <li>Для Python: <code>python -m http.server</code> в папке с файлом</li>
-                <li>Или используйте расширение браузера для отключения CORS (только для разработки)</li>
-            </ul>
-        </div>
         
         <!-- Блок поиска по кадастровому номеру -->
         <div class="row mb-3">
@@ -106,8 +93,14 @@ html
                                placeholder="Введите кадастровый номер (например, 50:27:0010302:123)">
                         <button id="searchCadastralBtn" class="btn btn-primary">Найти на карте</button>
                     </div>
-                    <div id="searchStatus" class="search-status mt-2"></div>
-                    <div id="cadastralInfo" class="cadastral-info">
+                    <div id="searchStatus" class="search-status mt-2 bg-warning text-dark" style="display: block;">
+                        <strong>Важно!</strong> Поиск по кадастровому номеру может работать нестабильно из-за ограничений Росреестра.<br>
+                        Если поиск не сработает, попробуйте через 5-10 минут или используйте ручной ввод.
+                    </div>
+                    <div id="proxyWarning" class="proxy-warning">
+                        Попробуем другой способ поиска...
+                    </div>
+                    <div id="cadastralInfo" class="cadastral-info" style="display: none;">
                         <h6>Найдено поле:</h6>
                         <p><strong>Кадастровый номер:</strong> <span id="infoCn"></span></p>
                         <p><strong>Площадь:</strong> <span id="infoArea"></span> га</p>
@@ -141,10 +134,11 @@ html
                         <li>Для поиска поля по кадастровому номеру введите номер и нажмите "Найти на карте"</li>
                     </ol>
                     <div class="alert alert-info mt-2">
-                        <strong>Важно!</strong> Для работы с Яндекс.Диском необходимо:
+                        <strong>Совет:</strong> Если поиск не работает, попробуйте:
                         <ol class="mt-1 mb-0">
-                            <li>Авторизоваться через кнопку "Войти через Яндекс"</li>
-                            <li>Разрешить доступ приложению</li>
+                            <li>Подождать 5-10 минут и повторить попытку</li>
+                            <li>Проверить правильность кадастрового номера</li>
+                            <li>Использовать ручной ввод данных</li>
                         </ol>
                     </div>
                 </div>
@@ -245,14 +239,18 @@ html
         
         // Список CORS прокси для обхода ограничений
         const CORS_PROXIES = [
-            'https://corsproxy.io/?',
             'https://api.allorigins.win/raw?url=',
             'https://api.codetabs.com/v1/proxy?quest=',
-            'https://cors-anywhere.herokuapp.com/'
+            'https://thingproxy.freeboard.io/fetch/',
+            'https://proxy.cors.sh/',
+            'https://proxy.hidemyass.com/'
         ];
         
         // Текущий индекс используемого прокси
         let currentProxyIndex = 0;
+        
+        // Флаг, указывающий, что мы используем резервный метод
+        let usingBackupMethod = false;
         
         // Функция загрузки полей из localStorage
         function loadFields() {
@@ -555,22 +553,15 @@ html
         async function searchByCadastralNumber(cadastralNumber) {
             const searchStatus = document.getElementById('searchStatus');
             const cadastralInfo = document.getElementById('cadastralInfo');
-            const corsWarning = document.getElementById('corsWarning');
+            const proxyWarning = document.getElementById('proxyWarning');
             
             searchStatus.style.display = 'block';
-            searchStatus.className = 'search-status bg-warning';
+            searchStatus.className = 'search-status bg-warning text-dark';
             searchStatus.textContent = 'Поиск данных в Росреестре...';
             cadastralInfo.style.display = 'none';
+            proxyWarning.style.display = 'none';
             
             try {
-                // Проверяем, не открывается ли файл напрямую через file://
-                if (window.location.protocol === 'file:') {
-                    corsWarning.style.display = 'block';
-                    searchStatus.className = 'search-status bg-danger text-white';
-                    searchStatus.textContent = 'Ошибка: запросы к API невозможны при открытии через file://. Запустите локальный веб-сервер!';
-                    return;
-                }
-                
                 // Форматируем кадастровый номер (удаляем лишние пробелы)
                 cadastralNumber = cadastralNumber.trim().replace(/\s+/g, '');
                 
@@ -586,36 +577,54 @@ html
                 let apiUrl = `https://pkk.rosreestr.ru/api/features/5?text=${encodeURIComponent(cadastralNumber)}&page=1&pageSize=15`;
                 let proxyUrl = CORS_PROXIES[currentProxyIndex] + encodeURIComponent(apiUrl);
                 
-                searchStatus.textContent = `Используем прокси: ${CORS_PROXIES[currentProxyIndex]}`;
+                searchStatus.textContent = `Используем прокси: ${CORS_PROXIES[currentProxyIndex].replace(/\/$/, '')}`;
+                
+                // Дополнительные заголовки для имитации браузерного запроса
+                const headers = {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Referer': 'https://pkk.rosreestr.ru/',
+                    'Origin': 'https://pkk.rosreestr.ru'
+                };
+                
+                // Добавляем User-Agent для некоторых прокси
+                if (CORS_PROXIES[currentProxyIndex].includes('cors.sh')) {
+                    headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
+                }
                 
                 // Запрос к API публичной кадастровой карты через прокси
                 const response = await fetch(proxyUrl, {
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
+                    headers: headers,
+                    mode: 'cors'
                 });
                 
                 if (!response.ok) {
-                    // Если текущий прокси не работает, пробуем следующий
-                    if (currentProxyIndex < CORS_PROXIES.length - 1) {
-                        currentProxyIndex++;
-                        return searchByCadastralNumber(cadastralNumber);
-                    }
-                    
                     throw new Error(`Сервер вернул ошибку: ${response.status} ${response.statusText}`);
                 }
                 
-                const data = await response.json();
-                
-                // Проверяем, не является ли ответ HTML-страницей (признак того, что прокси не сработал)
-                if (typeof data === 'string' && data.includes('<html') || data.includes('<!DOCTYPE')) {
-                    if (currentProxyIndex < CORS_PROXIES.length - 1) {
-                        currentProxyIndex++;
-                        return searchByCadastralNumber(cadastralNumber);
+                let data;
+                try {
+                    data = await response.json();
+                } catch (e) {
+                    // Если ответ пришел в виде строки, попробуем обработать как HTML
+                    const text = await response.text();
+                    
+                    // Проверяем, не является ли ответ HTML-страницей (признак того, что прокси не сработал)
+                    if (text.includes('<html') || text.includes('<!DOCTYPE')) {
+                        throw new Error('Получен HTML вместо JSON. Прокси-сервис не работает корректно.');
                     }
                     
-                    throw new Error('Получен HTML вместо JSON. Прокси-сервис не работает корректно.');
+                    // Попробуем найти JSON в тексте
+                    const jsonMatch = text.match(/({.*})/s);
+                    if (jsonMatch) {
+                        try {
+                            data = JSON.parse(jsonMatch[0]);
+                        } catch (parseError) {
+                            throw new Error('Не удалось извлечь JSON из ответа');
+                        }
+                    } else {
+                        throw new Error('Не удалось найти JSON в ответе');
+                    }
                 }
                 
                 if (!data || !data.features || data.features.length === 0) {
@@ -704,16 +713,28 @@ html
                 
             } catch (error) {
                 console.error('Ошибка поиска:', error);
+                searchStatus.className = 'search-status bg-warning text-dark';
                 
-                // Если все прокси не сработали
-                if (currentProxyIndex >= CORS_PROXIES.length - 1) {
+                // Если есть еще прокси для попробовать
+                if (currentProxyIndex < CORS_PROXIES.length - 1) {
+                    currentProxyIndex++;
+                    proxyWarning.style.display = 'block';
+                    proxyWarning.textContent = `Попробуем другой способ поиска (${currentProxyIndex + 1}/${CORS_PROXIES.length})...`;
+                    
+                    // Даем время увидеть предупреждение
+                    setTimeout(() => {
+                        searchByCadastralNumber(cadastralNumber);
+                    }, 1500);
+                } else {
+                    // Все прокси не сработали
                     searchStatus.className = 'search-status bg-danger text-white';
                     searchStatus.innerHTML = 'Не удалось подключиться к сервису Росреестра.<br>Попробуйте позже или проверьте формат кадастрового номера.';
                     currentProxyIndex = 0; // Сбросим индекс для следующей попытки
-                } else {
-                    // Попробуем следующий прокси
-                    currentProxyIndex++;
-                    searchByCadastralNumber(cadastralNumber);
+                    
+                    // Предложим ручной ввод
+                    setTimeout(() => {
+                        searchStatus.innerHTML += '<br><small>Вы можете вручную нарисовать контур поля на карте</small>';
+                    }, 2000);
                 }
             }
         }
@@ -887,11 +908,6 @@ html
             loadFields();
             initSyncHandlers();
             initCadastralSearch();
-            
-            // Проверяем, не открывается ли файл напрямую через file://
-            if (window.location.protocol === 'file:') {
-                document.getElementById('corsWarning').style.display = 'block';
-            }
         });
     </script>
 </body>
