@@ -1,0 +1,898 @@
+html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRM для КФХ - Учет сельскохозяйственных полей</title>
+    
+    <!-- Подключаем Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
+          crossorigin=""/>
+    
+    <!-- Подключаем Bootstrap для стилей -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <style>
+        #map {
+            height: 500px;
+            width: 100%;
+        }
+        .container {
+            margin-top: 20px;
+        }
+        .field-card {
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .field-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        .field-header {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        .sidebar {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .instructions {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .cloud-status {
+            padding: 8px 12px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        .sync-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .cadastral-search {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .search-status {
+            padding: 8px;
+            border-radius: 5px;
+            margin-top: 10px;
+            display: none;
+        }
+        .cadastral-info {
+            background-color: #e9f7fe;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 15px;
+            display: none;
+        }
+        .cors-warning {
+            background-color: #fff3cd;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">CRM для КФХ - Учет сельскохозяйственных полей</h1>
+        
+        <!-- Предупреждение о CORS -->
+        <div id="corsWarning" class="cors-warning">
+            <strong>Важно!</strong> Для поиска по кадастровому номеру необходим локальный веб-сервер.<br>
+            Если вы открываете файл напрямую (file://), установите простой HTTP-сервер:
+            <ul>
+                <li>Для Python: <code>python -m http.server</code> в папке с файлом</li>
+                <li>Или используйте расширение браузера для отключения CORS (только для разработки)</li>
+            </ul>
+        </div>
+        
+        <!-- Блок поиска по кадастровому номеру -->
+        <div class="row mb-3">
+            <div class="col-md-6 offset-md-3">
+                <div class="cadastral-search">
+                    <div class="input-group">
+                        <input type="text" id="cadastralSearch" class="form-control" 
+                               placeholder="Введите кадастровый номер (например, 50:27:0010302:123)">
+                        <button id="searchCadastralBtn" class="btn btn-primary">Найти на карте</button>
+                    </div>
+                    <div id="searchStatus" class="search-status mt-2"></div>
+                    <div id="cadastralInfo" class="cadastral-info">
+                        <h6>Найдено поле:</h6>
+                        <p><strong>Кадастровый номер:</strong> <span id="infoCn"></span></p>
+                        <p><strong>Площадь:</strong> <span id="infoArea"></span> га</p>
+                        <p><strong>Адрес:</strong> <span id="infoAddress"></span></p>
+                        <button id="useCadastralData" class="btn btn-sm btn-success mt-2">Использовать эти данные</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-4">
+                <div class="cloud-status bg-light d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>Состояние синхронизации:</strong> 
+                        <span id="syncStatus">Локальное хранилище</span>
+                    </div>
+                    <button id="syncBtn" class="btn btn-sm btn-primary sync-btn">
+                        <i class="bi bi-cloud-arrow-down"></i> Синхронизировать
+                    </button>
+                </div>
+                
+                <div class="instructions">
+                    <h4>Инструкция по использованию:</h4>
+                    <ol>
+                        <li>Нажмите на карту, чтобы установить точки границ поля</li>
+                        <li>После завершения контура нажмите "Сохранить поле"</li>
+                        <li>Заполните информацию о поле и посеве</li>
+                        <li>Данные сохранятся автоматически</li>
+                        <li>Для синхронизации с Яндекс.Диском нажмите кнопку "Синхронизировать"</li>
+                        <li>Для поиска поля по кадастровому номеру введите номер и нажмите "Найти на карте"</li>
+                    </ol>
+                    <div class="alert alert-info mt-2">
+                        <strong>Важно!</strong> Для работы с Яндекс.Диском необходимо:
+                        <ol class="mt-1 mb-0">
+                            <li>Авторизоваться через кнопку "Войти через Яндекс"</li>
+                            <li>Разрешить доступ приложению</li>
+                        </ol>
+                    </div>
+                </div>
+                
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        Добавить новое поле
+                    </div>
+                    <div class="card-body">
+                        <form id="fieldForm">
+                            <div class="mb-3">
+                                <label for="fieldName" class="form-label">Название поля</label>
+                                <input type="text" class="form-control" id="fieldName" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="fieldArea" class="form-label">Площадь (га)</label>
+                                <input type="number" step="0.1" class="form-control" id="fieldArea" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="cropType" class="form-label">Культура</label>
+                                <select class="form-select" id="cropType" required>
+                                    <option value="">Выберите культуру</option>
+                                    <option value="Пшеница">Пшеница</option>
+                                    <option value="Ячмень">Ячмень</option>
+                                    <option value="Кукуруза">Кукуруза</option>
+                                    <option value="Соя">Соя</option>
+                                    <option value="Подсолнечник">Подсолнечник</option>
+                                    <option value="Свекла">Свекла</option>
+                                    <option value="Картофель">Картофель</option>
+                                    <option value="Другое">Другое</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="fieldDescription" class="form-label">Описание</label>
+                                <textarea class="form-control" id="fieldDescription" rows="3"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Кадастровый номер</label>
+                                <input type="text" class="form-control" id="cadastralNumber">
+                            </div>
+                            <button type="submit" class="btn btn-success w-100">Сохранить поле</button>
+                        </form>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                        <span>Ваши поля</span>
+                        <button id="clearMapBtn" class="btn btn-sm btn-light">Очистить карту</button>
+                    </div>
+                    <div class="card-body p-0 sidebar">
+                        <div id="fieldsList">
+                            <!-- Список полей будет загружен из localStorage -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-8">
+                <div id="map" class="rounded"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Подключаем Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
+            crossorigin=""></script>
+    
+    <script>
+        // Инициализация карты
+        const map = L.map('map').setView([55.7558, 37.6173], 7); // Центр России
+        
+        // Добавляем слой OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+        
+        // Массив для временных точек контура поля
+        let drawingPoints = [];
+        let currentPolygon = null;
+        let cadastralPolygon = null; // Для отображения найденного кадастрового поля
+        
+        // Объект для хранения всех полей
+        let fields = [];
+        
+        // Объект для хранения информации о найденном кадастровом поле
+        let currentCadastralData = null;
+        
+        // Конфигурация для Яндекс.Диска
+        const YANDEX_CONFIG = {
+            CLIENT_ID: 'YOUR_CLIENT_ID', // Замените на свой CLIENT_ID
+            REDIRECT_URI: window.location.href,
+            SCOPE: 'disk',
+            API_URL: 'https://cloud-api.yandex.net/v1/disk',
+            FILE_PATH: 'app:/kfkh_data.json'
+        };
+        
+        // Список CORS прокси для обхода ограничений
+        const CORS_PROXIES = [
+            'https://corsproxy.io/?',
+            'https://api.allorigins.win/raw?url=',
+            'https://api.codetabs.com/v1/proxy?quest=',
+            'https://cors-anywhere.herokuapp.com/'
+        ];
+        
+        // Текущий индекс используемого прокси
+        let currentProxyIndex = 0;
+        
+        // Функция загрузки полей из localStorage
+        function loadFields() {
+            const savedFields = localStorage.getItem('kfkh_fields');
+            if (savedFields) {
+                fields = JSON.parse(savedFields);
+                renderFieldsList();
+                fields.forEach(field => {
+                    if (field.polygon) {
+                        addFieldToMap(field);
+                    }
+                });
+            }
+        }
+        
+        // Функция добавления поля на карту
+        function addFieldToMap(field) {
+            const polygon = L.polygon(field.polygon, {
+                color: '#3388ff',
+                weight: 2,
+                fillOpacity: 0.2
+            }).addTo(map);
+            
+            polygon.bindPopup(`
+                <b>${field.name}</b><br>
+                Площадь: ${field.area} га<br>
+                Культура: ${field.crop}<br>
+                Кад. номер: ${field.cadastral || 'не указан'}
+            `);
+            
+            // Добавляем обработчик клика для выделения в списке
+            polygon.on('click', function() {
+                document.querySelectorAll('.field-card').forEach(card => {
+                    card.classList.remove('border', 'border-primary', 'border-3');
+                });
+                
+                const activeCard = document.getElementById(`field-card-${field.id}`);
+                if (activeCard) {
+                    activeCard.classList.add('border', 'border-primary', 'border-3');
+                }
+            });
+        }
+        
+        // Функция сохранения полей в localStorage
+        function saveFields() {
+            localStorage.setItem('kfkh_fields', JSON.stringify(fields));
+        }
+        
+        // Функция отображения списка полей
+        function renderFieldsList() {
+            const fieldsList = document.getElementById('fieldsList');
+            fieldsList.innerHTML = '';
+            
+            if (fields.length === 0) {
+                fieldsList.innerHTML = '<p class="text-center text-muted p-3">Поля не добавлены</p>';
+                return;
+            }
+            
+            fields.forEach(field => {
+                const fieldCard = document.createElement('div');
+                fieldCard.className = 'field-card card m-2';
+                fieldCard.id = `field-card-${field.id}`;
+                fieldCard.innerHTML = `
+                    <div class="card-body">
+                        <div class="field-header">${field.name}</div>
+                        <div>Площадь: ${field.area} га</div>
+                        <div>Культура: ${field.crop}</div>
+                        <div class="mt-2 d-flex justify-content-between">
+                            <button class="btn btn-sm btn-info view-btn" data-id="${field.id}">Показать</button>
+                            <button class="btn btn-sm btn-danger delete-btn" data-id="${field.id}">Удалить</button>
+                        </div>
+                    </div>
+                `;
+                fieldsList.appendChild(fieldCard);
+            });
+            
+            // Добавляем обработчики для кнопок просмотра и удаления
+            document.querySelectorAll('.view-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const fieldId = this.getAttribute('data-id');
+                    const field = fields.find(f => f.id == fieldId);
+                    if (field && field.polygon) {
+                        map.fitBounds(field.polygon);
+                        
+                        // Выделяем поле в списке
+                        document.querySelectorAll('.field-card').forEach(card => {
+                            card.classList.remove('border', 'border-primary', 'border-3');
+                        });
+                        this.closest('.field-card').classList.add('border', 'border-primary', 'border-3');
+                    }
+                });
+            });
+            
+            document.querySelectorAll('.delete-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    if (confirm('Вы действительно хотите удалить это поле?')) {
+                        const fieldId = this.getAttribute('data-id');
+                        fields = fields.filter(field => field.id != fieldId);
+                        saveFields();
+                        renderFieldsList();
+                        map.eachLayer(layer => {
+                            if (layer instanceof L.Polygon && layer !== cadastralPolygon) {
+                                map.removeLayer(layer);
+                            }
+                        });
+                        loadFields();
+                    }
+                });
+            });
+        }
+        
+        // === РАБОТА С ЯНДЕКС.ДИСКОМ ===
+        
+        // Проверка наличия токена в localStorage
+        function getYandexToken() {
+            return localStorage.getItem('yandex_token');
+        }
+        
+        // Сохранение токена в localStorage
+        function saveYandexToken(token) {
+            localStorage.setItem('yandex_token', token);
+            updateSyncStatus();
+        }
+        
+        // Удаление токена
+        function clearYandexToken() {
+            localStorage.removeItem('yandex_token');
+            updateSyncStatus();
+        }
+        
+        // Обновление статуса синхронизации
+        function updateSyncStatus() {
+            const syncStatus = document.getElementById('syncStatus');
+            const token = getYandexToken();
+            
+            if (token) {
+                syncStatus.innerHTML = 'Подключено к Яндекс.Диску';
+                syncStatus.className = 'cloud-status bg-success text-white';
+            } else {
+                syncStatus.innerHTML = 'Только локальное хранилище';
+                syncStatus.className = 'cloud-status bg-warning';
+            }
+        }
+        
+        // Авторизация через Яндекс
+        function yandexAuth() {
+            // Если CLIENT_ID не задан, показываем предупреждение
+            if (YANDEX_CONFIG.CLIENT_ID === 'YOUR_CLIENT_ID') {
+                alert('Для работы с Яндекс.Диском необходимо:\n\n1. Зарегистрировать приложение в Яндекс OAuth\n2. Вставить ваш CLIENT_ID в код приложения\n\nПодробнее: https://oauth.yandex.ru/client/new');
+                return;
+            }
+            
+            const authUrl = `https://oauth.yandex.ru/authorize?response_type=token&client_id=${YANDEX_CONFIG.CLIENT_ID}&redirect_uri=${encodeURIComponent(YANDEX_CONFIG.REDIRECT_URI)}&scope=${YANDEX_CONFIG.SCOPE}`;
+            window.location.href = authUrl;
+        }
+        
+        // Проверка авторизации после возврата с Яндекса
+        function checkAuthCallback() {
+            const hash = window.location.hash;
+            if (hash) {
+                const params = new URLSearchParams(hash.substring(1));
+                const accessToken = params.get('access_token');
+                
+                if (accessToken) {
+                    saveYandexToken(accessToken);
+                    // Убираем токен из URL
+                    window.history.replaceState(null, null, ' ');
+                }
+            }
+        }
+        
+        // Загрузка данных с Яндекс.Диска
+        async function loadFromYandexDisk() {
+            const token = getYandexToken();
+            if (!token) {
+                alert('Сначала авторизуйтесь через Яндекс.Диск!');
+                return false;
+            }
+            
+            try {
+                document.getElementById('syncStatus').innerHTML = 'Загрузка данных с Яндекс.Диска...';
+                
+                const response = await fetch(`${YANDEX_CONFIG.API_URL}/resources/download?path=${encodeURIComponent(YANDEX_CONFIG.FILE_PATH)}`, {
+                    headers: {
+                        'Authorization': `OAuth ${token}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Ошибка при получении ссылки для загрузки');
+                }
+                
+                const downloadLink = await response.json();
+                
+                const fileResponse = await fetch(downloadLink.href);
+                if (!fileResponse.ok) {
+                    throw new Error('Ошибка при загрузке файла');
+                }
+                
+                const fileData = await fileResponse.json();
+                
+                // Сохраняем данные локально
+                fields = fileData.fields || [];
+                saveFields();
+                
+                // Обновляем интерфейс
+                renderFieldsList();
+                map.eachLayer(layer => {
+                    if (layer instanceof L.Polygon && layer !== cadastralPolygon) {
+                        map.removeLayer(layer);
+                    }
+                });
+                loadFields();
+                
+                document.getElementById('syncStatus').innerHTML = 'Данные успешно загружены с Яндекс.Диска!';
+                setTimeout(updateSyncStatus, 2000);
+                return true;
+            } catch (error) {
+                console.error('Ошибка синхронизации:', error);
+                document.getElementById('syncStatus').innerHTML = 'Ошибка синхронизации: ' + error.message;
+                return false;
+            }
+        }
+        
+        // Сохранение данных на Яндекс.Диск
+        async function saveToYandexDisk() {
+            const token = getYandexToken();
+            if (!token) {
+                alert('Сначала авторизуйтесь через Яндекс.Диск!');
+                return false;
+            }
+            
+            try {
+                document.getElementById('syncStatus').innerHTML = 'Сохранение данных на Яндекс.Диск...';
+                
+                // Получаем ссылку для загрузки
+                const uploadResponse = await fetch(`${YANDEX_CONFIG.API_URL}/resources/upload?path=${encodeURIComponent(YANDEX_CONFIG.FILE_PATH)}&overwrite=true`, {
+                    headers: {
+                        'Authorization': `OAuth ${token}`
+                    }
+                });
+                
+                if (!uploadResponse.ok) {
+                    throw new Error('Ошибка при получении ссылки для загрузки');
+                }
+                
+                const uploadLink = await uploadResponse.json();
+                
+                // Загружаем данные
+                const formData = new FormData();
+                formData.append('file', new Blob([JSON.stringify({ fields: fields })], { type: 'application/json' }));
+                
+                const fileResponse = await fetch(uploadLink.href, {
+                    method: 'PUT',
+                    body: formData
+                });
+                
+                if (!fileResponse.ok) {
+                    throw new Error('Ошибка при сохранении файла');
+                }
+                
+                document.getElementById('syncStatus').innerHTML = 'Данные успешно сохранены на Яндекс.Диск!';
+                setTimeout(updateSyncStatus, 2000);
+                return true;
+            } catch (error) {
+                console.error('Ошибка синхронизации:', error);
+                document.getElementById('syncStatus').innerHTML = 'Ошибка синхронизации: ' + error.message;
+                return false;
+            }
+        }
+        
+        // Инициализация обработчиков для синхронизации
+        function initSyncHandlers() {
+            // Кнопка синхронизации
+            document.getElementById('syncBtn').addEventListener('click', async function() {
+                const token = getYandexToken();
+                
+                if (!token) {
+                    yandexAuth();
+                    return;
+                }
+                
+                // Сначала загружаем данные с диска
+                const loaded = await loadFromYandexDisk();
+                
+                if (loaded) {
+                    // Затем сохраняем текущие данные
+                    await saveToYandexDisk();
+                }
+            });
+            
+            // Проверка callback после авторизации
+            checkAuthCallback();
+            updateSyncStatus();
+        }
+        
+        // === ПОИСК ПО КАДАСТРОВОМУ НОМЕРУ ===
+        
+        // Поиск поля по кадастровому номеру с использованием CORS прокси
+        async function searchByCadastralNumber(cadastralNumber) {
+            const searchStatus = document.getElementById('searchStatus');
+            const cadastralInfo = document.getElementById('cadastralInfo');
+            const corsWarning = document.getElementById('corsWarning');
+            
+            searchStatus.style.display = 'block';
+            searchStatus.className = 'search-status bg-warning';
+            searchStatus.textContent = 'Поиск данных в Росреестре...';
+            cadastralInfo.style.display = 'none';
+            
+            try {
+                // Проверяем, не открывается ли файл напрямую через file://
+                if (window.location.protocol === 'file:') {
+                    corsWarning.style.display = 'block';
+                    searchStatus.className = 'search-status bg-danger text-white';
+                    searchStatus.textContent = 'Ошибка: запросы к API невозможны при открытии через file://. Запустите локальный веб-сервер!';
+                    return;
+                }
+                
+                // Форматируем кадастровый номер (удаляем лишние пробелы)
+                cadastralNumber = cadastralNumber.trim().replace(/\s+/g, '');
+                
+                // Проверка формата кадастрового номера
+                const cadastralRegex = /^\d{1,2}:\d{1,3}:\d{1,7}:\d{1,10}$/;
+                if (!cadastralRegex.test(cadastralNumber)) {
+                    searchStatus.className = 'search-status bg-danger text-white';
+                    searchStatus.textContent = 'Неверный формат кадастрового номера. Пример: 50:27:0010302:123';
+                    return;
+                }
+                
+                // Пытаемся использовать прокси для обхода CORS
+                let apiUrl = `https://pkk.rosreestr.ru/api/features/5?text=${encodeURIComponent(cadastralNumber)}&page=1&pageSize=15`;
+                let proxyUrl = CORS_PROXIES[currentProxyIndex] + encodeURIComponent(apiUrl);
+                
+                searchStatus.textContent = `Используем прокси: ${CORS_PROXIES[currentProxyIndex]}`;
+                
+                // Запрос к API публичной кадастровой карты через прокси
+                const response = await fetch(proxyUrl, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                
+                if (!response.ok) {
+                    // Если текущий прокси не работает, пробуем следующий
+                    if (currentProxyIndex < CORS_PROXIES.length - 1) {
+                        currentProxyIndex++;
+                        return searchByCadastralNumber(cadastralNumber);
+                    }
+                    
+                    throw new Error(`Сервер вернул ошибку: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Проверяем, не является ли ответ HTML-страницей (признак того, что прокси не сработал)
+                if (typeof data === 'string' && data.includes('<html') || data.includes('<!DOCTYPE')) {
+                    if (currentProxyIndex < CORS_PROXIES.length - 1) {
+                        currentProxyIndex++;
+                        return searchByCadastralNumber(cadastralNumber);
+                    }
+                    
+                    throw new Error('Получен HTML вместо JSON. Прокси-сервис не работает корректно.');
+                }
+                
+                if (!data || !data.features || data.features.length === 0) {
+                    searchStatus.className = 'search-status bg-danger text-white';
+                    searchStatus.textContent = 'Поле с таким кадастровым номером не найдено';
+                    return;
+                }
+                
+                const feature = data.features[0];
+                const properties = feature.properties;
+                const geometry = feature.geometry;
+                
+                // Проверяем, есть ли геометрия
+                if (!geometry || !geometry.coordinates || geometry.coordinates.length === 0) {
+                    searchStatus.className = 'search-status bg-danger text-white';
+                    searchStatus.textContent = 'Для этого объекта нет геометрии в открытом доступе';
+                    return;
+                }
+                
+                // Сохраняем данные для последующего использования
+                currentCadastralData = {
+                    cn: properties.cn,
+                    area: properties.cadastral_square || properties.square || 'не указано',
+                    address: properties.address || 'не указан',
+                    coordinates: geometry.coordinates
+                };
+                
+                // Отображаем информацию
+                document.getElementById('infoCn').textContent = currentCadastralData.cn;
+                document.getElementById('infoArea').textContent = currentCadastralData.area;
+                document.getElementById('infoAddress').textContent = currentCadastralData.address;
+                cadastralInfo.style.display = 'block';
+                
+                // Удаляем предыдущий кадастровый полигон, если он есть
+                if (cadastralPolygon) {
+                    map.removeLayer(cadastralPolygon);
+                }
+                
+                // Преобразуем координаты для Leaflet (переворачиваем [x,y] в [y,x])
+                const leafletCoords = [];
+                
+                if (geometry.type === 'Polygon') {
+                    for (const ring of geometry.coordinates) {
+                        const convertedRing = [];
+                        for (const coord of ring) {
+                            // В GeoJSON координаты в формате [долгота, широта]
+                            // В Leaflet нужно [широта, долгота]
+                            convertedRing.push([coord[1], coord[0]]);
+                        }
+                        leafletCoords.push(convertedRing);
+                    }
+                } else if (geometry.type === 'MultiPolygon') {
+                    for (const polygon of geometry.coordinates) {
+                        const polygonRings = [];
+                        for (const ring of polygon) {
+                            const convertedRing = [];
+                            for (const coord of ring) {
+                                convertedRing.push([coord[1], coord[0]]);
+                            }
+                            polygonRings.push(convertedRing);
+                        }
+                        leafletCoords.push(...polygonRings);
+                    }
+                }
+                
+                // Создаем полигон на карте
+                cadastralPolygon = L.polygon(leafletCoords, {
+                    color: '#ff3388',
+                    weight: 3,
+                    dashArray: '5, 10',
+                    fillOpacity: 0.1
+                }).addTo(map);
+                
+                // Центрируем карту на найденном поле
+                map.fitBounds(cadastralPolygon.getBounds());
+                
+                // Добавляем всплывающее окно
+                cadastralPolygon.bindPopup(`
+                    <b>Кадастровый номер:</b> ${currentCadastralData.cn}<br>
+                    <b>Площадь:</b> ${currentCadastralData.area} га<br>
+                    <b>Адрес:</b> ${currentCadastralData.address}
+                `);
+                
+                searchStatus.className = 'search-status bg-success text-white';
+                searchStatus.textContent = 'Поле успешно найдено и отображено на карте!';
+                
+            } catch (error) {
+                console.error('Ошибка поиска:', error);
+                
+                // Если все прокси не сработали
+                if (currentProxyIndex >= CORS_PROXIES.length - 1) {
+                    searchStatus.className = 'search-status bg-danger text-white';
+                    searchStatus.innerHTML = 'Не удалось подключиться к сервису Росреестра.<br>Попробуйте позже или проверьте формат кадастрового номера.';
+                    currentProxyIndex = 0; // Сбросим индекс для следующей попытки
+                } else {
+                    // Попробуем следующий прокси
+                    currentProxyIndex++;
+                    searchByCadastralNumber(cadastralNumber);
+                }
+            }
+        }
+        
+        // Обработчик поиска по кадастровому номеру
+        function initCadastralSearch() {
+            document.getElementById('searchCadastralBtn').addEventListener('click', function() {
+                const cadastralNumber = document.getElementById('cadastralSearch').value;
+                if (cadastralNumber.trim() === '') {
+                    alert('Введите кадастровый номер для поиска');
+                    return;
+                }
+                searchByCadastralNumber(cadastralNumber);
+            });
+            
+            // Поиск при нажатии Enter
+            document.getElementById('cadastralSearch').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    const cadastralNumber = this.value;
+                    if (cadastralNumber.trim() !== '') {
+                        searchByCadastralNumber(cadastralNumber);
+                    }
+                }
+            });
+            
+            // Обработчик кнопки "Использовать эти данные"
+            document.getElementById('useCadastralData').addEventListener('click', function() {
+                if (!currentCadastralData) {
+                    alert('Сначала выполните поиск кадастрового номера');
+                    return;
+                }
+                
+                // Заполняем форму данными из кадастрового поля
+                document.getElementById('fieldName').value = `Поле ${currentCadastralData.cn}`;
+                document.getElementById('fieldArea').value = currentCadastralData.area;
+                document.getElementById('cadastralNumber').value = currentCadastralData.cn;
+                
+                // Если есть координаты, добавляем их как временные точки для контура
+                if (currentCadastralData.coordinates) {
+                    drawingPoints = [];
+                    
+                    // Преобразуем координаты для использования в контуре
+                    if (currentCadastralData.coordinates[0] && currentCadastralData.coordinates[0][0]) {
+                        for (const coord of currentCadastralData.coordinates[0]) {
+                            // [долгота, широта] -> [широта, долгота]
+                            drawingPoints.push([coord[1], coord[0]]);
+                        }
+                        
+                        // Удаляем предыдущий временный полигон, если он есть
+                        if (currentPolygon) {
+                            map.removeLayer(currentPolygon);
+                        }
+                        
+                        // Рисуем временный полигон
+                        if (drawingPoints.length > 1) {
+                            currentPolygon = L.polygon(drawingPoints, {
+                                color: '#ff3388',
+                                weight: 2,
+                                fillOpacity: 0.1
+                            }).addTo(map);
+                        }
+                    }
+                }
+                
+                alert('Данные кадастрового поля загружены в форму. Нажмите "Сохранить поле" для добавления.');
+            });
+        }
+        
+        // Обработчик клика по карте для рисования контура
+        map.on('click', function(e) {
+            const latlng = e.latlng;
+            
+            // Добавляем точку в массив
+            drawingPoints.push([latlng.lat, latlng.lng]);
+            
+            // Удаляем предыдущий временный полигон, если он есть
+            if (currentPolygon) {
+                map.removeLayer(currentPolygon);
+            }
+            
+            // Рисуем временный полигон
+            if (drawingPoints.length > 1) {
+                currentPolygon = L.polygon(drawingPoints, {
+                    color: '#ff3388',
+                    weight: 2,
+                    fillOpacity: 0.1
+                }).addTo(map);
+            }
+            
+            // Добавляем маркер для последней точки
+            L.circleMarker(latlng, {
+                radius: 5,
+                color: '#ff3388',
+                fillColor: '#ff3388',
+                fillOpacity: 1
+            }).addTo(map);
+        });
+        
+        // Обработчик формы добавления поля
+        document.getElementById('fieldForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Если есть найденное кадастровое поле и пользователь его использовал, разрешаем сохранение без точек
+            if (drawingPoints.length < 3 && !currentCadastralData) {
+                alert('Для создания поля необходимо добавить минимум 3 точки на карту. Нажмите на карту, чтобы добавить точки контура.');
+                return;
+            }
+            
+            const field = {
+                id: Date.now(), // Уникальный ID на основе времени
+                name: document.getElementById('fieldName').value,
+                area: document.getElementById('fieldArea').value,
+                crop: document.getElementById('cropType').value,
+                description: document.getElementById('fieldDescription').value,
+                cadastral: document.getElementById('cadastralNumber').value,
+                polygon: JSON.parse(JSON.stringify(drawingPoints)) // Копируем массив точек
+            };
+            
+            // Добавляем поле в массив
+            fields.push(field);
+            
+            // Сохраняем в localStorage
+            saveFields();
+            
+            // Очищаем временные данные
+            drawingPoints = [];
+            if (currentPolygon) {
+                map.removeLayer(currentPolygon);
+                currentPolygon = null;
+            }
+            
+            // Обновляем список полей
+            renderFieldsList();
+            
+            // Добавляем полигон на карту
+            addFieldToMap(field);
+            
+            // Сбрасываем форму
+            this.reset();
+            currentCadastralData = null;
+            document.getElementById('cadastralInfo').style.display = 'none';
+            
+            alert('Поле успешно добавлено!');
+        });
+        
+        // Обработчик кнопки "Очистить карту"
+        document.getElementById('clearMapBtn').addEventListener('click', function() {
+            if (confirm('Вы действительно хотите очистить карту от всех полей?')) {
+                fields = [];
+                saveFields();
+                renderFieldsList();
+                
+                // Удаляем все полигоны с карты (кроме кадастрового, если он есть)
+                map.eachLayer(layer => {
+                    if (layer instanceof L.Polygon && layer !== cadastralPolygon) {
+                        map.removeLayer(layer);
+                    }
+                });
+                
+                // Сбрасываем временные данные
+                drawingPoints = [];
+                if (currentPolygon) {
+                    map.removeLayer(currentPolygon);
+                    currentPolygon = null;
+                }
+            }
+        });
+        
+        // Инициализация при загрузке
+        document.addEventListener('DOMContentLoaded', function() {
+            loadFields();
+            initSyncHandlers();
+            initCadastralSearch();
+            
+            // Проверяем, не открывается ли файл напрямую через file://
+            if (window.location.protocol === 'file:') {
+                document.getElementById('corsWarning').style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>
