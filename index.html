@@ -60,23 +60,17 @@
             background-color: #f8f9fa;
             border-radius: 5px;
         }
-        .search-status {
-            padding: 8px;
+        .cadastral-iframe {
+            height: 500px;
+            border: 1px solid #ddd;
             border-radius: 5px;
-            margin-top: 10px;
+            margin-top: 15px;
         }
-        .cadastral-info {
+        .auto-fill {
             background-color: #e9f7fe;
             padding: 10px;
             border-radius: 5px;
             margin-top: 15px;
-        }
-        .proxy-warning {
-            background-color: #fff3cd;
-            padding: 10px;
-            border-radius: 5px;
-            margin-top: 10px;
-            display: none;
         }
     </style>
 </head>
@@ -88,24 +82,31 @@
         <div class="row mb-3">
             <div class="col-md-6 offset-md-3">
                 <div class="cadastral-search">
-                    <div class="input-group">
-                        <input type="text" id="cadastralSearch" class="form-control" 
-                               placeholder="Введите кадастровый номер (например, 50:27:0010302:123)">
-                        <button id="searchCadastralBtn" class="btn btn-primary">Найти на карте</button>
+                    <h5>Поиск по кадастровому номеру</h5>
+                    <p class="text-muted">Как это работает:</p>
+                    
+                    <ol>
+                        <li>Найдите ваш участок на кадастровой карте ниже</li>
+                        <li>Скопируйте кадастровый номер и площадь</li>
+                        <li>Вставьте их в форму при добавлении поля</li>
+                    </ol>
+                    
+                    <div class="input-group mt-2">
+                        <input type="text" id="manualCn" class="form-control" 
+                               placeholder="Кадастровый номер (скопируйте с карты)">
+                        <input type="number" step="0.1" id="manualArea" class="form-control" 
+                               placeholder="Площадь (скопируйте с карты)">
+                        <button id="useManualData" class="btn btn-success">Использовать</button>
                     </div>
-                    <div id="searchStatus" class="search-status mt-2 bg-warning text-dark" style="display: block;">
-                        <strong>Важно!</strong> Поиск по кадастровому номеру может работать нестабильно из-за ограничений Росреестра.<br>
-                        Если поиск не сработает, попробуйте через 5-10 минут или используйте ручной ввод.
-                    </div>
-                    <div id="proxyWarning" class="proxy-warning">
-                        Попробуем другой способ поиска...
-                    </div>
-                    <div id="cadastralInfo" class="cadastral-info" style="display: none;">
-                        <h6>Найдено поле:</h6>
-                        <p><strong>Кадастровый номер:</strong> <span id="infoCn"></span></p>
-                        <p><strong>Площадь:</strong> <span id="infoArea"></span> га</p>
-                        <p><strong>Адрес:</strong> <span id="infoAddress"></span></p>
-                        <button id="useCadastralData" class="btn btn-sm btn-success mt-2">Использовать эти данные</button>
+                    
+                    <div class="auto-fill mt-3">
+                        <h6>Подсказка:</h6>
+                        <p>Чтобы найти участок:</p>
+                        <ul>
+                            <li>Нажмите на значок лупы в правом верхнем углу карты</li>
+                            <li>Введите кадастровый номер или адрес</li>
+                            <li>Кликните по участку на карте, чтобы увидеть его данные</li>
+                        </ul>
                     </div>
                 </div>
             </div>
@@ -126,21 +127,13 @@
                 <div class="instructions">
                     <h4>Инструкция по использованию:</h4>
                     <ol>
-                        <li>Нажмите на карту, чтобы установить точки границ поля</li>
-                        <li>После завершения контура нажмите "Сохранить поле"</li>
-                        <li>Заполните информацию о поле и посеве</li>
-                        <li>Данные сохранятся автоматически</li>
-                        <li>Для синхронизации с Яндекс.Диском нажмите кнопку "Синхронизировать"</li>
-                        <li>Для поиска поля по кадастровому номеру введите номер и нажмите "Найти на карте"</li>
+                        <li>Найдите участок на кадастровой карте справа</li>
+                        <li>Скопируйте кадастровый номер и площадь</li>
+                        <li>Вставьте их в форму ниже</li>
+                        <li>Нажмите "Использовать"</li>
+                        <li>Нарисуйте контур на карте КФХ, ориентируясь на кадастровую карту</li>
+                        <li>Сохраните поле</li>
                     </ol>
-                    <div class="alert alert-info mt-2">
-                        <strong>Совет:</strong> Если поиск не работает, попробуйте:
-                        <ol class="mt-1 mb-0">
-                            <li>Подождать 5-10 минут и повторить попытку</li>
-                            <li>Проверить правильность кадастрового номера</li>
-                            <li>Использовать ручной ввод данных</li>
-                        </ol>
-                    </div>
                 </div>
                 
                 <div class="card mb-4">
@@ -198,7 +191,13 @@
             </div>
             
             <div class="col-md-8">
-                <div id="map" class="rounded"></div>
+                <h4 class="mb-3">Публичная кадастровая карта Росреестра</h4>
+                <!-- Встраиваем кадастровую карту напрямую -->
+                <iframe src="https://pkk.rosreestr.ru/" class="cadastral-iframe" frameborder="0"></iframe>
+                
+                <div class="mt-3">
+                    <div id="map" class="rounded"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -220,13 +219,9 @@
         // Массив для временных точек контура поля
         let drawingPoints = [];
         let currentPolygon = null;
-        let cadastralPolygon = null; // Для отображения найденного кадастрового поля
         
         // Объект для хранения всех полей
         let fields = [];
-        
-        // Объект для хранения информации о найденном кадастровом поле
-        let currentCadastralData = null;
         
         // Конфигурация для Яндекс.Диска
         const YANDEX_CONFIG = {
@@ -236,21 +231,6 @@
             API_URL: 'https://cloud-api.yandex.net/v1/disk',
             FILE_PATH: 'app:/kfkh_data.json'
         };
-        
-        // Список CORS прокси для обхода ограничений
-        const CORS_PROXIES = [
-            'https://api.allorigins.win/raw?url=',
-            'https://api.codetabs.com/v1/proxy?quest=',
-            'https://thingproxy.freeboard.io/fetch/',
-            'https://proxy.cors.sh/',
-            'https://proxy.hidemyass.com/'
-        ];
-        
-        // Текущий индекс используемого прокси
-        let currentProxyIndex = 0;
-        
-        // Флаг, указывающий, что мы используем резервный метод
-        let usingBackupMethod = false;
         
         // Функция загрузки полей из localStorage
         function loadFields() {
@@ -352,7 +332,7 @@
                         saveFields();
                         renderFieldsList();
                         map.eachLayer(layer => {
-                            if (layer instanceof L.Polygon && layer !== cadastralPolygon) {
+                            if (layer instanceof L.Polygon) {
                                 map.removeLayer(layer);
                             }
                         });
@@ -459,7 +439,7 @@
                 // Обновляем интерфейс
                 renderFieldsList();
                 map.eachLayer(layer => {
-                    if (layer instanceof L.Polygon && layer !== cadastralPolygon) {
+                    if (layer instanceof L.Polygon) {
                         map.removeLayer(layer);
                     }
                 });
@@ -547,262 +527,6 @@
             updateSyncStatus();
         }
         
-        // === ПОИСК ПО КАДАСТРОВОМУ НОМЕРУ ===
-        
-        // Поиск поля по кадастровому номеру с использованием CORS прокси
-        async function searchByCadastralNumber(cadastralNumber) {
-            const searchStatus = document.getElementById('searchStatus');
-            const cadastralInfo = document.getElementById('cadastralInfo');
-            const proxyWarning = document.getElementById('proxyWarning');
-            
-            searchStatus.style.display = 'block';
-            searchStatus.className = 'search-status bg-warning text-dark';
-            searchStatus.textContent = 'Поиск данных в Росреестре...';
-            cadastralInfo.style.display = 'none';
-            proxyWarning.style.display = 'none';
-            
-            try {
-                // Форматируем кадастровый номер (удаляем лишние пробелы)
-                cadastralNumber = cadastralNumber.trim().replace(/\s+/g, '');
-                
-                // Проверка формата кадастрового номера
-                const cadastralRegex = /^\d{1,2}:\d{1,3}:\d{1,7}:\d{1,10}$/;
-                if (!cadastralRegex.test(cadastralNumber)) {
-                    searchStatus.className = 'search-status bg-danger text-white';
-                    searchStatus.textContent = 'Неверный формат кадастрового номера. Пример: 50:27:0010302:123';
-                    return;
-                }
-                
-                // Пытаемся использовать прокси для обхода CORS
-                let apiUrl = `https://pkk.rosreestr.ru/api/features/5?text=${encodeURIComponent(cadastralNumber)}&page=1&pageSize=15`;
-                let proxyUrl = CORS_PROXIES[currentProxyIndex] + encodeURIComponent(apiUrl);
-                
-                searchStatus.textContent = `Используем прокси: ${CORS_PROXIES[currentProxyIndex].replace(/\/$/, '')}`;
-                
-                // Дополнительные заголовки для имитации браузерного запроса
-                const headers = {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Referer': 'https://pkk.rosreestr.ru/',
-                    'Origin': 'https://pkk.rosreestr.ru'
-                };
-                
-                // Добавляем User-Agent для некоторых прокси
-                if (CORS_PROXIES[currentProxyIndex].includes('cors.sh')) {
-                    headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
-                }
-                
-                // Запрос к API публичной кадастровой карты через прокси
-                const response = await fetch(proxyUrl, {
-                    headers: headers,
-                    mode: 'cors'
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`Сервер вернул ошибку: ${response.status} ${response.statusText}`);
-                }
-                
-                let data;
-                try {
-                    data = await response.json();
-                } catch (e) {
-                    // Если ответ пришел в виде строки, попробуем обработать как HTML
-                    const text = await response.text();
-                    
-                    // Проверяем, не является ли ответ HTML-страницей (признак того, что прокси не сработал)
-                    if (text.includes('<html') || text.includes('<!DOCTYPE')) {
-                        throw new Error('Получен HTML вместо JSON. Прокси-сервис не работает корректно.');
-                    }
-                    
-                    // Попробуем найти JSON в тексте
-                    const jsonMatch = text.match(/({.*})/s);
-                    if (jsonMatch) {
-                        try {
-                            data = JSON.parse(jsonMatch[0]);
-                        } catch (parseError) {
-                            throw new Error('Не удалось извлечь JSON из ответа');
-                        }
-                    } else {
-                        throw new Error('Не удалось найти JSON в ответе');
-                    }
-                }
-                
-                if (!data || !data.features || data.features.length === 0) {
-                    searchStatus.className = 'search-status bg-danger text-white';
-                    searchStatus.textContent = 'Поле с таким кадастровым номером не найдено';
-                    return;
-                }
-                
-                const feature = data.features[0];
-                const properties = feature.properties;
-                const geometry = feature.geometry;
-                
-                // Проверяем, есть ли геометрия
-                if (!geometry || !geometry.coordinates || geometry.coordinates.length === 0) {
-                    searchStatus.className = 'search-status bg-danger text-white';
-                    searchStatus.textContent = 'Для этого объекта нет геометрии в открытом доступе';
-                    return;
-                }
-                
-                // Сохраняем данные для последующего использования
-                currentCadastralData = {
-                    cn: properties.cn,
-                    area: properties.cadastral_square || properties.square || 'не указано',
-                    address: properties.address || 'не указан',
-                    coordinates: geometry.coordinates
-                };
-                
-                // Отображаем информацию
-                document.getElementById('infoCn').textContent = currentCadastralData.cn;
-                document.getElementById('infoArea').textContent = currentCadastralData.area;
-                document.getElementById('infoAddress').textContent = currentCadastralData.address;
-                cadastralInfo.style.display = 'block';
-                
-                // Удаляем предыдущий кадастровый полигон, если он есть
-                if (cadastralPolygon) {
-                    map.removeLayer(cadastralPolygon);
-                }
-                
-                // Преобразуем координаты для Leaflet (переворачиваем [x,y] в [y,x])
-                const leafletCoords = [];
-                
-                if (geometry.type === 'Polygon') {
-                    for (const ring of geometry.coordinates) {
-                        const convertedRing = [];
-                        for (const coord of ring) {
-                            // В GeoJSON координаты в формате [долгота, широта]
-                            // В Leaflet нужно [широта, долгота]
-                            convertedRing.push([coord[1], coord[0]]);
-                        }
-                        leafletCoords.push(convertedRing);
-                    }
-                } else if (geometry.type === 'MultiPolygon') {
-                    for (const polygon of geometry.coordinates) {
-                        const polygonRings = [];
-                        for (const ring of polygon) {
-                            const convertedRing = [];
-                            for (const coord of ring) {
-                                convertedRing.push([coord[1], coord[0]]);
-                            }
-                            polygonRings.push(convertedRing);
-                        }
-                        leafletCoords.push(...polygonRings);
-                    }
-                }
-                
-                // Создаем полигон на карте
-                cadastralPolygon = L.polygon(leafletCoords, {
-                    color: '#ff3388',
-                    weight: 3,
-                    dashArray: '5, 10',
-                    fillOpacity: 0.1
-                }).addTo(map);
-                
-                // Центрируем карту на найденном поле
-                map.fitBounds(cadastralPolygon.getBounds());
-                
-                // Добавляем всплывающее окно
-                cadastralPolygon.bindPopup(`
-                    <b>Кадастровый номер:</b> ${currentCadastralData.cn}<br>
-                    <b>Площадь:</b> ${currentCadastralData.area} га<br>
-                    <b>Адрес:</b> ${currentCadastralData.address}
-                `);
-                
-                searchStatus.className = 'search-status bg-success text-white';
-                searchStatus.textContent = 'Поле успешно найдено и отображено на карте!';
-                
-            } catch (error) {
-                console.error('Ошибка поиска:', error);
-                searchStatus.className = 'search-status bg-warning text-dark';
-                
-                // Если есть еще прокси для попробовать
-                if (currentProxyIndex < CORS_PROXIES.length - 1) {
-                    currentProxyIndex++;
-                    proxyWarning.style.display = 'block';
-                    proxyWarning.textContent = `Попробуем другой способ поиска (${currentProxyIndex + 1}/${CORS_PROXIES.length})...`;
-                    
-                    // Даем время увидеть предупреждение
-                    setTimeout(() => {
-                        searchByCadastralNumber(cadastralNumber);
-                    }, 1500);
-                } else {
-                    // Все прокси не сработали
-                    searchStatus.className = 'search-status bg-danger text-white';
-                    searchStatus.innerHTML = 'Не удалось подключиться к сервису Росреестра.<br>Попробуйте позже или проверьте формат кадастрового номера.';
-                    currentProxyIndex = 0; // Сбросим индекс для следующей попытки
-                    
-                    // Предложим ручной ввод
-                    setTimeout(() => {
-                        searchStatus.innerHTML += '<br><small>Вы можете вручную нарисовать контур поля на карте</small>';
-                    }, 2000);
-                }
-            }
-        }
-        
-        // Обработчик поиска по кадастровому номеру
-        function initCadastralSearch() {
-            document.getElementById('searchCadastralBtn').addEventListener('click', function() {
-                const cadastralNumber = document.getElementById('cadastralSearch').value;
-                if (cadastralNumber.trim() === '') {
-                    alert('Введите кадастровый номер для поиска');
-                    return;
-                }
-                searchByCadastralNumber(cadastralNumber);
-            });
-            
-            // Поиск при нажатии Enter
-            document.getElementById('cadastralSearch').addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    const cadastralNumber = this.value;
-                    if (cadastralNumber.trim() !== '') {
-                        searchByCadastralNumber(cadastralNumber);
-                    }
-                }
-            });
-            
-            // Обработчик кнопки "Использовать эти данные"
-            document.getElementById('useCadastralData').addEventListener('click', function() {
-                if (!currentCadastralData) {
-                    alert('Сначала выполните поиск кадастрового номера');
-                    return;
-                }
-                
-                // Заполняем форму данными из кадастрового поля
-                document.getElementById('fieldName').value = `Поле ${currentCadastralData.cn}`;
-                document.getElementById('fieldArea').value = currentCadastralData.area;
-                document.getElementById('cadastralNumber').value = currentCadastralData.cn;
-                
-                // Если есть координаты, добавляем их как временные точки для контура
-                if (currentCadastralData.coordinates) {
-                    drawingPoints = [];
-                    
-                    // Преобразуем координаты для использования в контуре
-                    if (currentCadastralData.coordinates[0] && currentCadastralData.coordinates[0][0]) {
-                        for (const coord of currentCadastralData.coordinates[0]) {
-                            // [долгота, широта] -> [широта, долгота]
-                            drawingPoints.push([coord[1], coord[0]]);
-                        }
-                        
-                        // Удаляем предыдущий временный полигон, если он есть
-                        if (currentPolygon) {
-                            map.removeLayer(currentPolygon);
-                        }
-                        
-                        // Рисуем временный полигон
-                        if (drawingPoints.length > 1) {
-                            currentPolygon = L.polygon(drawingPoints, {
-                                color: '#ff3388',
-                                weight: 2,
-                                fillOpacity: 0.1
-                            }).addTo(map);
-                        }
-                    }
-                }
-                
-                alert('Данные кадастрового поля загружены в форму. Нажмите "Сохранить поле" для добавления.');
-            });
-        }
-        
         // Обработчик клика по карте для рисования контура
         map.on('click', function(e) {
             const latlng = e.latlng;
@@ -837,8 +561,7 @@
         document.getElementById('fieldForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
-            // Если есть найденное кадастровое поле и пользователь его использовал, разрешаем сохранение без точек
-            if (drawingPoints.length < 3 && !currentCadastralData) {
+            if (drawingPoints.length < 3) {
                 alert('Для создания поля необходимо добавить минимум 3 точки на карту. Нажмите на карту, чтобы добавить точки контура.');
                 return;
             }
@@ -874,9 +597,6 @@
             
             // Сбрасываем форму
             this.reset();
-            currentCadastralData = null;
-            document.getElementById('cadastralInfo').style.display = 'none';
-            
             alert('Поле успешно добавлено!');
         });
         
@@ -887,9 +607,9 @@
                 saveFields();
                 renderFieldsList();
                 
-                // Удаляем все полигоны с карты (кроме кадастрового, если он есть)
+                // Удаляем все полигоны с карты
                 map.eachLayer(layer => {
-                    if (layer instanceof L.Polygon && layer !== cadastralPolygon) {
+                    if (layer instanceof L.Polygon) {
                         map.removeLayer(layer);
                     }
                 });
@@ -903,11 +623,27 @@
             }
         });
         
+        // Обработчик ручного ввода кадастровых данных
+        document.getElementById('useManualData').addEventListener('click', function() {
+            const cn = document.getElementById('manualCn').value;
+            const area = document.getElementById('manualArea').value;
+            
+            if (!cn) {
+                alert('Введите кадастровый номер');
+                return;
+            }
+            
+            document.getElementById('fieldName').value = `Поле ${cn}`;
+            document.getElementById('fieldArea').value = area;
+            document.getElementById('cadastralNumber').value = cn;
+            
+            alert('Данные успешно загружены в форму. Теперь вы можете нарисовать контур поля на карте.');
+        });
+        
         // Инициализация при загрузке
         document.addEventListener('DOMContentLoaded', function() {
             loadFields();
             initSyncHandlers();
-            initCadastralSearch();
         });
     </script>
 </body>
